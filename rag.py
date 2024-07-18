@@ -13,11 +13,9 @@ class RagWorker:
 
         self.data = self.data.add_faiss_index("embeddings") # Добавляем индексацию для поиска по данным
 
-        bot_model_name = "IlyaGusev/saiga_llama3_8b" # Загружаем LLM, которая будет генерировать ответ на текст
+        bot_model_name = "Vikhrmodels/it-5.4-fp16-orpo-v2" # Загружаем LLM, которая будет генерировать ответ на текст
         self.tokenizer_bot = AutoTokenizer.from_pretrained(bot_model_name, cache_dir=r"d:\hugging_face\cache")
-        self.model_bot = AutoModelForCausalLM.from_pretrained(bot_model_name, cache_dir=r"d:\hugging_face\cache",
-                                                              device_map="auto")
-        self.generation_config = GenerationConfig.from_pretrained(bot_model_name)
+        self.model_bot = AutoModelForCausalLM.from_pretrained(bot_model_name, cache_dir=r"d:\hugging_face\cache")
 
         self.system_promt = """Ты - ВикиБот, русскоязычный автоматический ассистент. Тебе будут предоставлены извлеченные части длинного документа и вопрос. 
                                 Ответь на него в разговорной форме. Если ты не знаешь ответа, просто скажи "Я не знаю". Не придумывай ответ."""
@@ -42,14 +40,18 @@ class RagWorker:
                 }, {
                     "role": "user",
                     "content": promt
-                }], tokenize=False, add_generation_prompt=True)
+                }], add_generation_prompt=True, tokenize=True, return_tensors='pt')
 
-        data = self.tokenizer_bot(message, return_tensors="pt", add_special_tokens=False)
-        data = {k: v.to(self.model_bot.device) for k, v in data.items()}
+        message = message.to(self.model_bot.device)
 
-        output_ids = self.model_bot.generate(**data, generation_config=self.generation_config)[0]
-        output_ids = output_ids[len(data["input_ids"][0]):]
-        output = self.tokenizer_bot.decode(output_ids, skip_special_tokens=True).strip()
+        output = self.model_bot.generate(
+                    message,
+                    do_sample=True,
+                    max_new_tokens=1024,
+                    temperature=0.6,
+                )[:, message.shape[-1]:]
+
+        output = self.tokenizer_bot.batch_decode(output, skip_special_tokens=True)[0]
 
         return output
 
